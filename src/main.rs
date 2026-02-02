@@ -19,6 +19,29 @@ mod tests {
         assert_eq!(at.shape(), (3,2));
     }
 
+    #[test]
+    fn linear_forward_shape() {
+        let lin = Linear::new(3, 4);
+        let x = Tensor::zeros(2, 3);
+        let y = lin.forward(&x);
+        assert_eq!(y.shape(), (2,4));
+    }
+}
+
+#[derive(Clone, Debug)]
+struct Linear {
+    w: Tensor, // [in, out]
+}
+
+impl Linear {
+    fn new(in_dim: usize, out_dim: usize) -> Self {
+        // deterministic init for now (all zeros)
+        Linear { w: Tensor::zeros(in_dim, out_dim) }
+    }
+
+    fn forward(&self, x: &Tensor) -> Tensor {
+        x.matmul(&self.w)
+    }
 }
 
 #[derive(Clone, Debug)]
