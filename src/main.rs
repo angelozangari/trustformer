@@ -1,4 +1,4 @@
-use ndarray::Array2;
+use ndarray::{Array1, Array2, Axis};
 
 #[cfg(test)]
 mod tests {
@@ -35,21 +35,95 @@ mod tests {
         let y = blk.forward(&x);
         assert_eq!(y.shape(), (7, d));
     }
+
+    #[test]
+    fn layernorm_shape() {
+        let x = Tensor::from_vec(2, 3, vec![1.,2.,3., 4., 5.,6.]);
+        let ln = LayerNorm::new(3, 1e-5);
+        let y = ln::forward(&x);
+        assert_eq!(y.shape(), (2,3));
+    }
+
+    #[test]
+    fn layernorm_row_stats_approx() {
+        let x = Tensor::from_vec(1, 4, vec![1., 2., 3., 4.]); // non-constant row
+        let ln = LayerNorm::new(4, 1e-5);
+        let y = ln.forward(&x);
+
+        let row = y.0.row(0);
+        let mean = row.sum() / 4.0;
+        let mut var = 0.0;
+        for v in row.iter() {
+            var += (*v - mean) * (*v - mean);
+        }
+        var /= 4.0;
+
+        assert!(mean.abs() < 1e-4, "mean={mean}");
+        assert!((var - 1.0).abs() < 1e-3, "var={var}");
+    }
 }
 
 #[derive(Clone, Debug)]
 struct Block {
+    ln: LayerNorm,
     proj: Linear, // [d_model, d_model]
 }
 
 impl Block {
     fn new(d_model: usize) -> Self {
-        Block { proj: Linear::new(d_model, d_model) }
+        Block { 
+            ln: LayerNorm::new(d_model, 1e-5),
+            proj: Linear::new(d_model, d_model),
+        }
     }
 
     fn forward(&self, x: &Tensor) -> Tensor {
+        let h = self.ln.forward(x);
         // residual: x + proj(x)
         x.add(&self.proj.forward(x))
+    }
+}
+
+#[derive(Clone, Debug)]
+struct LayerNorm {
+    gamma: Array1<f32>, // [d]
+    beta: Array1<f32>,  // [d]
+    eps: f32,
+}
+
+impl LayerNorm {
+    fn new(d_model: usize, eps: f32) -> Self {
+        LayerNorm {
+            gamma: Array1::ones(d_model),
+            beta: Array1::zeros(d_model),
+            eps,
+        }
+    }
+
+    fn forward(&self, x: &Tensor) -> Tensor {
+        let (n, d) = x.shape();
+        assert_eq!(self.gamma.len(), d, "LayerNorm gamma shape mismatch");
+        assert_eq!(self.beta.len(), d, "LayerNorm beta shape mismatch");
+
+        let mut y = x.0.clone();
+
+        for mut row in y.axis_iter_mut(Axis(0)) {
+            let mean = row.sum() / (d as f32);
+            let mut var = 0.0f32;
+            for v in row.iter() {
+                let t = *v - mean;
+                var += t * t;
+            }
+            var /= f as f32;
+            let inv_std = 1.0f32 / (var + self.eps).sqrt();
+
+            for j in 0..d {
+                let norm = (row[j] - mean) * inv_std;
+                row[j] = norm * self.gamma[j] + self.beta[j];
+            }
+        }
+        
+        Tensor(y)
     }
 }
 
