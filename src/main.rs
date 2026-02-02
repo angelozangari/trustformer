@@ -61,26 +61,36 @@ mod tests {
         assert!(mean.abs() < 1e-4, "mean={mean}");
         assert!((var - 1.0).abs() < 1e-3, "var={var}");
     }
+
+    #[test]
+    fn self_attention_shape() {
+        let d = 8;
+        let n = 5;
+        let attn = SelfAttention::new(d);
+        let x = Tensor::zeros(n, d);
+        let y = attn.forward(&x);
+        assert_eq!(y.shape(), (n, d));
+    }
 }
 
 #[derive(Clone, Debug)]
 struct Block {
     ln: LayerNorm,
-    proj: Linear, // [d_model, d_model]
+    attn: SelfAttention,
 }
 
 impl Block {
     fn new(d_model: usize) -> Self {
         Block { 
             ln: LayerNorm::new(d_model, 1e-5),
-            proj: Linear::new(d_model, d_model),
+            attn: SelfAttention::new(d_model),
         }
     }
 
     fn forward(&self, x: &Tensor) -> Tensor {
         let h = self.ln.forward(x);
-        // residual: x + proj(x)
-        x.add(&self.proj.forward(x))
+        // residual: x + attn(h)
+        x.add(&self.attn.forward(&h))
     }
 }
 
@@ -144,6 +154,44 @@ impl Linear {
 }
 
 #[derive(Clone, Debug)]
+struct SelfAttention {
+    wq: Linear,
+    wk: Linear,
+    wv: Linear,
+    wo: Linear,
+    d_model: usize,
+}
+
+impl SelfAttention {
+    fn new(d_model: usize) -> Self {
+        SelfAttention { 
+            wq: Linear::new(d_model, d_model),
+            wk: Linear::new(d_model, d_model),
+            wv: Linear::new(d_model, d_model),
+            wo: Linear::new(d_model, d_model),
+            d_model,
+        }
+    }
+    
+    fn forward(&self, x: &Tensor) -> Tensor {
+        // x: [n, d]
+        let q = self.wq.forward(x); // [n, d]
+        let k = self.wk.forward(x); // [n, d]
+        let v = self.wv.forward(x); // [n, d]
+
+        // scores: [n, n] = Q K^T / sqrt(d)
+        let scale = 1.0f32 / (self.d_model as f32).sqrt();
+        let scores = q.matmul(&k.transpose()).scale(scale); // [n, n]
+
+        // note: no softmax yet; this is intentionally wrong numerically but shape-correct
+        let ctx = scores.matmul(&v); // [n, d]
+        self.wo.forward(&ctx) // [n, d]
+    }
+}
+
+
+
+#[derive(Clone, Debug)]
 struct Tensor(Array2<f32>);
 
 impl Tensor {
@@ -174,6 +222,10 @@ impl Tensor {
 
     fn transpose(&self) -> Tensor {
         Tensor(self.0.t().to_owned())
+    }
+
+    fn scale(&self, s: f32) -> Tensor {
+        Tensor(self.0.mapv(|x| x*s))
     }
 
 }
