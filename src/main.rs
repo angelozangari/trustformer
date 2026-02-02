@@ -26,6 +26,31 @@ mod tests {
         let y = lin.forward(&x);
         assert_eq!(y.shape(), (2,4));
     }
+
+    #[test]
+    fn block_forward_shape() {
+        let d = 5; 
+        let blk = Block::new(d);
+        let x = Tensor::zeros(7, 5); // 7 "tokens" flattened, d features
+        let y = blk.forward(&x);
+        assert_eq!(y.shape(), (7, d));
+    }
+}
+
+#[derive(Clone, Debug)]
+struct Block {
+    proj: Linear, // [d_model, d_model]
+}
+
+impl Block {
+    fn new(d_model: usize) -> Self {
+        Block { proj: Linear::new(d_model, d_model) }
+    }
+
+    fn forward(&self, x: &Tensor) -> Tensor {
+        // residual: x + proj(x)
+        x.add(&self.proj.forward(x))
+    }
 }
 
 #[derive(Clone, Debug)]
