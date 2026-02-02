@@ -1,3 +1,44 @@
+use ndarray::Array2;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn matmul_shapes() {
+        let a = Tensor::from_vec(2, 3, vec![1.,2.,3., 4.,5.,6.]);
+        let b = Tensor::from_vec(3, 2, vec![7.,8., 9.,10., 11.,12.]);
+        let c = a.matmul(&b);
+        assert_eq!(c.0.dim(), (2,2))
+    }
+}
+
+#[derive(Clone, Debug)]
+struct Tensor(Array2<f32>);
+
+impl Tensor {
+    fn zeros(rows: usize, cols: usize) -> Self {
+        Tensor(Array2::zeros((rows, cols)))
+    }
+ 
+    fn from_vec(rows: usize, cols: usize, data: Vec<f32>) -> Self {
+        Tensor(Array2::from_shape_vec((rows, cols), data).expect("bad shape"))
+    }
+
+    fn matmul(&self, other: &Tensor) -> Tensor {
+        let (a_r, a_c) = self.0.dim();
+        let (b_r, b_c) = other.0.dim();
+        assert!(a_c == b_r, "matmul shape mismatch: ({a_r},{a_c})x({b_r},{b_c})");
+        Tensor(self.0.dot(&other.0))
+    }
+    fn add(&self, other: &Tensor) -> Tensor {
+        let a = self.0.dim();
+        let b = other.0.dim();
+        assert!(a == b, "add shape mismatch: {:?} vs {:?}", a, b);
+        Tensor(&self.0 + &other.0)
+    }
+}
+
 struct Transformer;
 
 impl Transformer {
