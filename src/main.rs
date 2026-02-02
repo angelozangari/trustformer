@@ -11,6 +11,14 @@ mod tests {
         let c = a.matmul(&b);
         assert_eq!(c.0.dim(), (2,2))
     }
+
+    #[test]
+    fn transpose_shapes() {
+        let a = Tensor::zeros(2, 3);
+        let at = a.transpose();
+        assert_eq!(at.shape(), (3,2));
+    }
+
 }
 
 #[derive(Clone, Debug)]
@@ -37,6 +45,15 @@ impl Tensor {
         assert!(a == b, "add shape mismatch: {:?} vs {:?}", a, b);
         Tensor(&self.0 + &other.0)
     }
+
+    fn shape(&self) -> (usize, usize) {
+        self.0.dim()
+    }
+
+    fn transpose(&self) -> Tensor {
+        Tensor(self.0.t().to_owned())
+    }
+
 }
 
 struct Transformer;
